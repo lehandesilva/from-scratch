@@ -1,2 +1,6 @@
 # Compiled executables
 nn
+mlp
+
+# Datasets: large, downloadable, not source
+dataset/
