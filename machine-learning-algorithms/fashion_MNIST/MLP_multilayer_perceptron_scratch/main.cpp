@@ -113,6 +113,24 @@ std::vector<Sample> splitOffDev(std::vector<Sample>& data, size_t devSize, std::
     return dev;
 }
 
+// Locate the dataset directory. An explicit command-line argument wins; otherwise
+// try the usual spots so the binary works from its own folder or the repo root.
+std::string findDatasetDir(int argc, char** argv) {
+    std::vector<std::string> candidates;
+    if (argc > 1) candidates.push_back(argv[1]);
+    candidates.push_back("../dataset/");                                         // run from this folder
+    candidates.push_back("machine-learning-algorithms/fashion_MNIST/dataset/");  // run from repo root
+    candidates.push_back("dataset/");                                            // run from fashion_MNIST/
+    for (std::string dir : candidates) {
+        if (!dir.empty() && dir.back() != '/') dir += '/';                       // tolerate a missing slash
+        std::ifstream probe(dir + "fashion-mnist_train.csv");
+        if (probe) return dir;
+    }
+    std::cerr << "could not find fashion-mnist_train.csv in any known location.\n"
+              << "pass the dataset directory as an argument, e.g. ./mlp path/to/dataset" << std::endl;
+    std::exit(1);
+}
+
 // --- Activations and loss (TODO) ---
 
 // TODO: relu(z) = max(0, z). Hidden layers use this instead of sigmoid.
@@ -268,14 +286,21 @@ void confusionMatrix(std::vector<Layer>& network, std::vector<Sample>& data) {
     }
 }
 
-int main() {
-    std::cout << "YEAHHHH... OKAYYYY!!!! - lil Jon";
-    const std::string dir = "../dataset/";
+int main(int argc, char** argv) {
+    std::cout << "YEAHHHH... OKAYYYY!!!! - lil Jon" << std::endl;
+    const std::string dir = findDatasetDir(argc, argv);
+    std::cout << "dataset dir " << dir << std::endl;
     std::vector<Sample> train = loadCSV(dir + "fashion-mnist_train.csv", 60000);
     std::vector<Sample> test  = loadCSV(dir + "fashion-mnist_test.csv", 10000);
 
-    // Milestone 1: eyeball one image. Row 0 is a Pullover, so expect a sweater shape.
-    printAscii(train[0]);
+    // Milestone 1: eyeball one image. A different row each run, so repeated runs
+    // sample the dataset instead of vouching for the same picture every time.
+    std::random_device seedSource;
+    std::mt19937 previewRng(seedSource());
+    std::uniform_int_distribution<size_t> previewPick(0, train.size() - 1);
+    size_t previewIndex = previewPick(previewRng);
+    std::cout << "preview row " << previewIndex << std::endl;
+    printAscii(train[previewIndex]);
 
     // Three splits:
     //   train - the only data the weights are ever fitted to
