@@ -135,27 +135,33 @@ std::string findDatasetDir(int argc, char** argv) {
 
 // TODO: relu(z) = max(0, z). Hidden layers use this instead of sigmoid.
 double relu(double z) {
-    (void)z;
-    return 0.0;
+    return std::max(0.0, z);
 }
 
 // TODO: derivative expressed via the output a: 1 if a > 0, else 0.
 double relu_derivative(double a) {
-    (void)a;
-    return 0.0;
+    return a > 0.0 ? 1.0 : 0.0;
 }
 
 // TODO: softmax turns raw scores into probabilities that sum to 1.
 // Subtract the largest score before exp() or large scores overflow to inf.
 void softmax(std::vector<double>& z) {
-    (void)z;
+    double m = *std::max_element(z.begin(), z.end());
+    double sum = 0.0;
+    for (size_t j = 0; j < z.size(); j++){
+        z[j] = std::exp(z[j] - m);
+        sum += z[j];
+    }
+    for (size_t j = 0; j < z.size(); j++){
+        z[j] /= sum;
+    }
+
 }
 
 // TODO: categorical cross-entropy is just -log(probability of the correct class).
 double crossEntropy(const std::vector<double>& probs, int label) {
-    (void)probs;
-    (void)label;
-    return 0.0;
+    double p = std::max(probs[label], 1e-12);
+    return -std::log(p);
 }
 
 // --- Layer ---
@@ -196,8 +202,23 @@ Layer makeLayer(int numInputs, int numNeurons, Activation act, std::mt19937& rng
 // Cache input and output on the layer; backprop needs both.
 // Softmax layers apply softmax to the whole z vector at once, not per neuron.
 std::vector<double> forwardLayer(Layer& layer, const std::vector<double>& input) {
-    (void)input;
-    layer.output.assign(layer.W.size(), 1.0 / layer.W.size());  // stub: uniform guess
+    layer.input = input;
+    std::vector<double> z(layer.W.size());
+    for (size_t j = 0; j < layer.W.size(); j++){
+        z[j] = layer.b[j];
+        for (size_t i = 0; i < input.size(); i++){
+            z[j] += layer.W[j][i] * input[i];
+        }
+    }
+    if (layer.activation == Activation::ReLU){
+        for (size_t j = 0; j < layer.W.size(); j++){
+            z[j] = relu(z[j]);
+        }
+    }
+    else {
+        softmax(z);
+    }
+    layer.output = z;
     return layer.output;
 }
 
@@ -212,16 +233,47 @@ std::vector<double> forward(std::vector<Layer>& network, const std::vector<doubl
 
 // --- Backward pass (TODO) ---
 
-// TODO: compute gradients and ADD them into layer.dW / layer.db.
-// Do not update weights here; applyGradients does that once per batch.
-//
-// Softmax + cross-entropy collapse the output delta to the same simple form
-// your XOR net used: delta[j] = output[j] - (j == label ? 1 : 0).
-// Route delta back through W, then scale by relu_derivative of the previous
-// layer's output. Read the old weight before you change anything.
+// Backprop via the chain rule. Gradients are ADDED into layer.dW / layer.db;
+// applyGradients does the weight update once per batch.
 void backward(std::vector<Layer>& network, int label) {
-    (void)network;
-    (void)label;
+    Layer& hidden = network[0];   // 784 -> 128, ReLU
+    Layer& output = network[1];   // 128 -> 10, softmax
+
+    // dL/dz_output = dL/da * da/dz; for softmax + cross-entropy this collapses to a - y
+    std::vector<double> dL_dz_output(output.output.size());
+    for (size_t j = 0; j < dL_dz_output.size(); j++) {
+        dL_dz_output[j] = output.output[j] - (static_cast<int>(j) == label ? 1.0 : 0.0);
+    }
+
+    // dL/dW = dL/dz * dz/dW, and dz/dW = the input that weight multiplied; dz/db = 1
+    for (size_t j = 0; j < output.W.size(); j++) {
+        for (size_t i = 0; i < output.input.size(); i++) {
+            output.dW[j][i] += dL_dz_output[j] * output.input[i];
+        }
+        output.db[j] += dL_dz_output[j];
+    }
+
+    // dL/da_hidden = sum over j of dL/dz_output[j] * dz_output[j]/da_hidden, and that last term is W[j][i]
+    std::vector<double> dL_da_hidden(hidden.output.size(), 0.0);
+    for (size_t i = 0; i < dL_da_hidden.size(); i++) {
+        for (size_t j = 0; j < output.W.size(); j++) {
+            dL_da_hidden[i] += output.W[j][i] * dL_dz_output[j];
+        }
+    }
+
+    // dL/dz_hidden = dL/da * da/dz, where da/dz = relu'(z) (read off a: a > 0 exactly when z > 0)
+    std::vector<double> dL_dz_hidden(dL_da_hidden.size());
+    for (size_t i = 0; i < dL_dz_hidden.size(); i++) {
+        dL_dz_hidden[i] = dL_da_hidden[i] * relu_derivative(hidden.output[i]);
+    }
+
+    // dL/dW = dL/dz * dz/dW, with the pixels as input this time
+    for (size_t i = 0; i < hidden.W.size(); i++) {
+        for (size_t k = 0; k < hidden.input.size(); k++) {
+            hidden.dW[i][k] += dL_dz_hidden[i] * hidden.input[k];
+        }
+        hidden.db[i] += dL_dz_hidden[i];
+    }
 }
 
 // --- Gradient bookkeeping ---
