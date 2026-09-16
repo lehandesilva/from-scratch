@@ -318,6 +318,16 @@ double accuracy(std::vector<Layer>& network, std::vector<Sample>& data) {
     return static_cast<double>(correct) / data.size();
 }
 
+// Average cross-entropy over a split, on the same scale as the printed train loss.
+// Train loss falling while THIS rises is overfitting; accuracy alone hides it.
+double averageLoss(std::vector<Layer>& network, std::vector<Sample>& data) {
+    double total = 0.0;
+    for (Sample& s : data) {
+        total += crossEntropy(forward(network, s.pixels), s.label);
+    }
+    return total / data.size();
+}
+
 // Confusion matrix: rows are true classes, columns are predictions.
 // The off-diagonal entries tell you WHICH classes the net mixes up, which a
 // single accuracy number hides. Expect the shirt/pullover/coat block to be worst.
@@ -378,6 +388,9 @@ int main(int argc, char** argv) {
     std::vector<size_t> order(train.size());
     std::iota(order.begin(), order.end(), 0);   // indices we shuffle instead of the data itself
 
+    std::ofstream curve("training_curve.csv");             // one row per epoch, for plotting
+    curve << "epoch,train_loss,dev_loss,dev_acc" << std::endl;
+
     for (int e = 0; e < epochs; e++) {
         std::shuffle(order.begin(), order.end(), rng);   // new sample order every epoch
         double epochLoss = 0.0;
@@ -394,10 +407,15 @@ int main(int argc, char** argv) {
             applyGradients(network, lr, end - start);                  // one update per batch
         }
 
-        // Watch both numbers: train loss falling while dev accuracy stalls means overfitting.
+        // The gap between train loss and dev loss is the overfitting; watch it widen.
+        double trainLoss = epochLoss / train.size();
+        double devLoss = averageLoss(network, dev);
+        double devAcc = accuracy(network, dev);
         std::cout << "epoch " << e
-                  << "  train loss " << epochLoss / train.size()
-                  << "  dev acc " << accuracy(network, dev) << std::endl;
+                  << "  train loss " << trainLoss
+                  << "  dev loss " << devLoss
+                  << "  dev acc " << devAcc << std::endl;
+        curve << e << "," << trainLoss << "," << devLoss << "," << devAcc << std::endl;
     }
 
     std::cout << "\nfinal test accuracy " << accuracy(network, test) << std::endl;
