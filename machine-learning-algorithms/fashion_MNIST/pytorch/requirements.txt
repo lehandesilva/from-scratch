@@ -1,0 +1,13 @@
+# Fashion-MNIST PyTorch: notebook + live_tuner
+# CUDA 13 wheels come from the PyTorch index:
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu130
+
+# model and training (notebook + live_tuner)
+torch>=2.14.0
+numpy>=2.5.3
+
+# notebook only
+torchvision>=0.29.0
+matplotlib
+scikit-learn
+ipykernel>=7.3.0
